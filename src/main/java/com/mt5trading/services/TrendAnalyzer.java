@@ -1,41 +1,81 @@
-package main.java.com.mt5trading.core.services;
+package com.mt5trading.services;
 
-import com.mt5trading.models.*;
+import com.mt5trading.config.TradingConfig;
+import com.mt5trading.models.CandleData;
+import com.mt5trading.models.MACDData;
+import com.mt5trading.models.TrendDirection;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.List;
 
 public class TrendAnalyzer {
-    private boolean useStrictConfirmation;
-    private boolean useMACDConfirmation;
+    private static final Logger logger = LoggerFactory.getLogger(TrendAnalyzer.class);
     
-    public TrendAnalyzer(boolean useStrictConfirmation, boolean useMACDConfirmation) {
-        this.useStrictConfirmation = useStrictConfirmation;
-        this.useMACDConfirmation = useMACDConfirmation;
+    private final TradingConfig config;
+    private final MACDCalculator macdCalculator;
+    
+    public TrendAnalyzer(TradingConfig config) {
+        this.config = config;
+        this.macdCalculator = new MACDCalculator(
+                config.getMacdFastPeriod(),
+                config.getMacdSlowPeriod(),
+                config.getMacdSignalPeriod()
+        );
     }
     
-    public TrendDirection confirmTrend(CandleData previousCandle, CandleData currentCandle, MACDData macdData) {
-        // Bullish candle confirmation
+    public TrendDirection analyzeTrend(List<CandleData> candles) {
+        if (candles == null || candles.size() < 2) {
+            logger.warn("Not enough candles for trend analysis");
+            return TrendDirection.NONE;
+        }
+        
+        CandleData previousCandle = candles.get(candles.size() - 2);
+        CandleData currentCandle = candles.get(candles.size() - 1);
+        
+        return confirmTrend(previousCandle, currentCandle, candles);
+    }
+    
+    public TrendDirection confirmTrend(CandleData previousCandle, CandleData currentCandle, 
+                                      List<CandleData> candles) {
+        if (previousCandle == null || currentCandle == null) {
+            return TrendDirection.NONE;
+        }
+        
+        // Check MACD confirmation if enabled
+        MACDData macdData = null;
+        if (config.isUseMACDConfirmation()) {
+            macdData = macdCalculator.calculateCurrentMACD(candles);
+        }
+        
+        // Bullish confirmation
         if (previousCandle.isBullish()) {
-            boolean candleOK = useStrictConfirmation ? 
-                (currentCandle.getOpen() > previousCandle.getHigh()) :
-                (currentCandle.getOpen() > previousCandle.getClose());
-                
-            boolean macdOK = !useMACDConfirmation || 
-                (macdData != null && macdData.isBullish());
+            boolean candleConfirmation = config.isUseStrictConfirmation() 
+                    ? (currentCandle.getOpen() > previousCandle.getHigh())
+                    : (currentCandle.getOpen() > previousCandle.getClose());
             
-            if (candleOK && macdOK) {
+            boolean macdConfirmation = !config.isUseMACDConfirmation() 
+                    || (macdData != null && macdData.isBullish());
+            
+            if (candleConfirmation && macdConfirmation) {
+                logger.info("Uptrend confirmed. Previous bullish candle, new candle opens above {}",
+                           config.isUseStrictConfirmation() ? "previous high" : "previous close");
                 return TrendDirection.UPTREND;
             }
         }
         
-        // Bearish candle confirmation
+        // Bearish confirmation
         if (previousCandle.isBearish()) {
-            boolean candleOK = useStrictConfirmation ?
-                (currentCandle.getOpen() < previousCandle.getLow()) :
-                (currentCandle.getOpen() < previousCandle.getClose());
-                
-            boolean macdOK = !useMACDConfirmation ||
-                (macdData != null && macdData.isBearish());
+            boolean candleConfirmation = config.isUseStrictConfirmation()
+                    ? (currentCandle.getOpen() < previousCandle.getLow())
+                    : (currentCandle.getOpen() < previousCandle.getClose());
             
-            if (candleOK && macdOK) {
+            boolean macdConfirmation = !config.isUseMACDConfirmation()
+                    || (macdData != null && macdData.isBearish());
+            
+            if (candleConfirmation && macdConfirmation) {
+                logger.info("Downtrend confirmed. Previous bearish candle, new candle opens below {}",
+                           config.isUseStrictConfirmation() ? "previous low" : "previous close");
                 return TrendDirection.DOWNTREND;
             }
         }
@@ -43,54 +83,75 @@ public class TrendAnalyzer {
         return TrendDirection.NONE;
     }
     
-    // Enhanced trend confirmation with market structure
-    public TrendDirection confirmTrendWithStructure(
-            CandleData previousCandle, 
-            CandleData currentCandle,
-            List<CandleData> recentCandles,
-            MACDData macdData) {
-        
-        TrendDirection basicTrend = confirmTrend(previousCandle, currentCandle, macdData);
-        
-        if (basicTrend == TrendDirection.NONE) {
-            return TrendDirection.NONE;
+    public double calculateTrendStrength(List<CandleData> candles) {
+        if (candles == null || candles.size() < 10) {
+            return 0.0;
         }
         
-        // Check market structure for higher highs/lows or lower highs/lows
-        boolean structureValid = false;
+        int bullishCount = 0;
+        int totalCount = Math.min(candles.size(), 20); // Last 20 candles
         
-        if (basicTrend == TrendDirection.UPTREND) {
-            structureValid = hasHigherHighsAndLows(recentCandles);
-        } else if (basicTrend == TrendDirection.DOWNTREND) {
-            structureValid = hasLowerHighsAndLows(recentCandles);
+        for (int i = candles.size() - totalCount; i < candles.size(); i++) {
+            if (candles.get(i).isBullish()) {
+                bullishCount++;
+            }
         }
         
-        return structureValid ? basicTrend : TrendDirection.NONE;
+        double ratio = (double) bullishCount / totalCount;
+        
+        // Convert to -1 (strong bearish) to +1 (strong bullish)
+        return (ratio - 0.5) * 2;
     }
     
-    private boolean hasHigherHighsAndLows(List<CandleData> candles) {
-        // Implement higher highs and higher lows logic
-        if (candles.size() < 3) return false;
+    public boolean isMarketStructureBullish(List<CandleData> candles) {
+        if (candles.size() < 5) return false;
         
-        for (int i = 1; i < candles.size() - 1; i++) {
-            if (candles.get(i).getHigh() <= candles.get(i-1).getHigh() ||
-                candles.get(i).getLow() <= candles.get(i-1).getLow()) {
+        // Check for higher highs and higher lows
+        int checkCount = Math.min(candles.size() - 1, 5);
+        
+        for (int i = 0; i < checkCount; i++) {
+            int currentIndex = candles.size() - 1 - i;
+            int prevIndex = currentIndex - 1;
+            
+            if (candles.get(currentIndex).getHigh() < candles.get(prevIndex).getHigh()) {
+                return false;
+            }
+            if (candles.get(currentIndex).getLow() < candles.get(prevIndex).getLow()) {
                 return false;
             }
         }
+        
         return true;
     }
     
-    private boolean hasLowerHighsAndLows(List<CandleData> candles) {
-        // Implement lower highs and lower lows logic
-        if (candles.size() < 3) return false;
+    public boolean isMarketStructureBearish(List<CandleData> candles) {
+        if (candles.size() < 5) return false;
         
-        for (int i = 1; i < candles.size() - 1; i++) {
-            if (candles.get(i).getHigh() >= candles.get(i-1).getHigh() ||
-                candles.get(i).getLow() >= candles.get(i-1).getLow()) {
+        // Check for lower highs and lower lows
+        int checkCount = Math.min(candles.size() - 1, 5);
+        
+        for (int i = 0; i < checkCount; i++) {
+            int currentIndex = candles.size() - 1 - i;
+            int prevIndex = currentIndex - 1;
+            
+            if (candles.get(currentIndex).getHigh() > candles.get(prevIndex).getHigh()) {
+                return false;
+            }
+            if (candles.get(currentIndex).getLow() > candles.get(prevIndex).getLow()) {
                 return false;
             }
         }
+        
         return true;
+    }
+    
+    public boolean hasVolatilityExpansion(CandleData previousCandle, CandleData currentCandle) {
+        if (previousCandle == null || currentCandle == null) return false;
+        
+        double previousRange = previousCandle.getTotalRange();
+        double currentRange = currentCandle.getTotalRange();
+        
+        // Current range is at least 1.5 times previous range
+        return currentRange > previousRange * 1.5;
     }
 }

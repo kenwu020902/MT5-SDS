@@ -1,8 +1,19 @@
-package main.java.com.mt5trading.core.models;
+package com.mt5trading.models;
 
 import java.time.LocalDateTime;
 
 public class OrderDecision {
+    private TrendDirection trend;
+    private double entryPrice;
+    private double stopLoss;
+    private double takeProfit;
+    private double positionSize;
+    private OrderAction action;
+    private String symbol;
+    private LocalDateTime decisionTime;
+    private String reason;
+    private double confidence;
+    
     public enum OrderAction {
         BUY,
         SELL,
@@ -10,129 +21,79 @@ public class OrderDecision {
         CLOSE
     }
     
-    private OrderAction action;
-    private String symbol;
-    private double entryPrice;
-    private double stopLoss;
-    private double takeProfit;
-    private double positionSize; // in lots
-    private String reason;
-    private LocalDateTime decisionTime;
-    private double confidence; // 0.0 to 1.0
-    
-    // Private constructor
-    private OrderDecision(OrderAction action, String symbol, double entryPrice, 
-                         double stopLoss, double takeProfit, double positionSize, 
-                         String reason, double confidence) {
-        this.action = action;
-        this.symbol = symbol;
-        this.entryPrice = entryPrice;
-        this.stopLoss = stopLoss;
-        this.takeProfit = takeProfit;
-        this.positionSize = positionSize;
-        this.reason = reason;
+    public OrderDecision() {
         this.decisionTime = LocalDateTime.now();
-        this.confidence = confidence;
+        this.confidence = 0.0;
     }
     
-    // Factory methods
-    public static OrderDecision buy(String symbol, double entryPrice, double stopLoss, 
-                                   double takeProfit, double positionSize, String reason) {
-        return new OrderDecision(OrderAction.BUY, symbol, entryPrice, stopLoss, 
-                               takeProfit, positionSize, reason, 0.8);
-    }
+    // Getters and Setters
+    public TrendDirection getTrend() { return trend; }
+    public void setTrend(TrendDirection trend) { this.trend = trend; }
     
-    public static OrderDecision buy(String symbol, double entryPrice, double stopLoss, 
-                                   double takeProfit, double positionSize, 
-                                   String reason, double confidence) {
-        return new OrderDecision(OrderAction.BUY, symbol, entryPrice, stopLoss, 
-                               takeProfit, positionSize, reason, confidence);
-    }
-    
-    public static OrderDecision sell(String symbol, double entryPrice, double stopLoss, 
-                                    double takeProfit, double positionSize, String reason) {
-        return new OrderDecision(OrderAction.SELL, symbol, entryPrice, stopLoss, 
-                               takeProfit, positionSize, reason, 0.8);
-    }
-    
-    public static OrderDecision sell(String symbol, double entryPrice, double stopLoss, 
-                                    double takeProfit, double positionSize, 
-                                    String reason, double confidence) {
-        return new OrderDecision(OrderAction.SELL, symbol, entryPrice, stopLoss, 
-                               takeProfit, positionSize, reason, confidence);
-    }
-    
-    public static OrderDecision hold(String symbol, String reason) {
-        return new OrderDecision(OrderAction.HOLD, symbol, 0, 0, 0, 0, reason, 0.5);
-    }
-    
-    public static OrderDecision noDecision(String reason) {
-        return new OrderDecision(OrderAction.HOLD, null, 0, 0, 0, 0, reason, 0.0);
-    }
-    
-    public static OrderDecision close(String symbol, String reason) {
-        return new OrderDecision(OrderAction.CLOSE, symbol, 0, 0, 0, 0, reason, 0.9);
-    }
-    
-    // Getters
-    public OrderAction getAction() { return action; }
-    public String getSymbol() { return symbol; }
     public double getEntryPrice() { return entryPrice; }
+    public void setEntryPrice(double entryPrice) { this.entryPrice = entryPrice; }
+    
     public double getStopLoss() { return stopLoss; }
+    public void setStopLoss(double stopLoss) { this.stopLoss = stopLoss; }
+    
     public double getTakeProfit() { return takeProfit; }
+    public void setTakeProfit(double takeProfit) { this.takeProfit = takeProfit; }
+    
     public double getPositionSize() { return positionSize; }
-    public String getReason() { return reason; }
+    public void setPositionSize(double positionSize) { this.positionSize = positionSize; }
+    
+    public OrderAction getAction() { return action; }
+    public void setAction(OrderAction action) { this.action = action; }
+    
+    public String getSymbol() { return symbol; }
+    public void setSymbol(String symbol) { this.symbol = symbol; }
+    
     public LocalDateTime getDecisionTime() { return decisionTime; }
+    public void setDecisionTime(LocalDateTime decisionTime) { this.decisionTime = decisionTime; }
+    
+    public String getReason() { return reason; }
+    public void setReason(String reason) { this.reason = reason; }
+    
     public double getConfidence() { return confidence; }
+    public void setConfidence(double confidence) { this.confidence = confidence; }
     
-    // Risk calculation methods
-    public double calculateRiskAmount() {
-        if (action == OrderAction.HOLD || action == OrderAction.CLOSE) {
-            return 0;
-        }
-        return Math.abs(entryPrice - stopLoss) * positionSize;
+    // Helper methods
+    public boolean isBuySignal() {
+        return action == OrderAction.BUY;
     }
     
-    public double calculatePotentialProfit() {
-        if (action == OrderAction.HOLD || action == OrderAction.CLOSE) {
-            return 0;
-        }
-        return Math.abs(takeProfit - entryPrice) * positionSize;
+    public boolean isSellSignal() {
+        return action == OrderAction.SELL;
     }
     
-    public double calculateRiskRewardRatio() {
-        double risk = calculateRiskAmount();
-        if (risk == 0) return 0;
-        return calculatePotentialProfit() / risk;
+    public boolean shouldExecute() {
+        return action == OrderAction.BUY || action == OrderAction.SELL;
     }
     
-    public boolean isValid() {
-        if (action == OrderAction.HOLD || action == OrderAction.CLOSE) {
-            return symbol != null && reason != null;
+    public double getRiskRewardRatio() {
+        if (entryPrice == 0 || stopLoss == 0) return 0;
+        double risk = Math.abs(entryPrice - stopLoss);
+        double reward = Math.abs(takeProfit - entryPrice);
+        return reward / risk;
+    }
+    
+    public void validate() {
+        if (entryPrice <= 0) {
+            throw new IllegalStateException("Invalid entry price: " + entryPrice);
         }
-        
-        return symbol != null && 
-               entryPrice > 0 && 
-               stopLoss > 0 && 
-               takeProfit > 0 && 
-               positionSize > 0 && 
-               reason != null &&
-               ((action == OrderAction.BUY && takeProfit > entryPrice && entryPrice > stopLoss) ||
-                (action == OrderAction.SELL && takeProfit < entryPrice && entryPrice < stopLoss));
+        if (positionSize <= 0) {
+            throw new IllegalStateException("Invalid position size: " + positionSize);
+        }
+        if (confidence < 0 || confidence > 1) {
+            throw new IllegalStateException("Confidence must be between 0 and 1: " + confidence);
+        }
     }
     
     @Override
     public String toString() {
-        if (action == OrderAction.HOLD || action == OrderAction.CLOSE) {
-            return String.format("OrderDecision{action=%s, symbol='%s', reason='%s', time=%s}",
-                    action, symbol, reason, decisionTime);
-        }
-        
-        return String.format(
-            "OrderDecision{action=%s, symbol='%s', entry=%.2f, SL=%.2f, TP=%.2f, " +
-            "size=%.2f, reason='%s', confidence=%.2f, RR=%.2f, time=%s}",
-            action, symbol, entryPrice, stopLoss, takeProfit, positionSize,
-            reason, confidence, calculateRiskRewardRatio(), decisionTime
-        );
+        return String.format("OrderDecision[Action: %s, Symbol: %s, Price: %.5f, SL: %.5f, TP: %.5f, " +
+                           "Size: %.2f, Confidence: %.1f%%, Reason: %s]",
+                action, symbol, entryPrice, stopLoss, takeProfit, positionSize, 
+                confidence * 100, reason);
     }
 }

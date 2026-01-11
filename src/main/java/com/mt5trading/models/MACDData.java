@@ -1,31 +1,45 @@
-package main.java.com.mt5trading.core.models;
+package com.mt5trading.models;
 
 public class MACDData {
     private double macdLine;
     private double signalLine;
     private double histogram;
-    private double previousMacd;
-    private double previousSignal;
-    private double previousHistogram;
+    private int fastPeriod;
+    private int slowPeriod;
+    private int signalPeriod;
     
-    // Original constructor
-    public MACDData(double macdLine, double signalLine, double histogram) {
+    public MACDData() {}
+    
+    public MACDData(double macdLine, double signalLine, double histogram, 
+                   int fastPeriod, int slowPeriod, int signalPeriod) {
         this.macdLine = macdLine;
         this.signalLine = signalLine;
         this.histogram = histogram;
+        this.fastPeriod = fastPeriod;
+        this.slowPeriod = slowPeriod;
+        this.signalPeriod = signalPeriod;
     }
     
-    // Constructor for tests
-    public MACDData(double macdLine, double signalLine, double histogram,
-                   double previousMacd, double previousSignal, double previousHistogram) {
-        this.macdLine = macdLine;
-        this.signalLine = signalLine;
-        this.histogram = histogram;
-        this.previousMacd = previousMacd;
-        this.previousSignal = previousSignal;
-        this.previousHistogram = previousHistogram;
-    }
+    // Getters and Setters
+    public double getMacdLine() { return macdLine; }
+    public void setMacdLine(double macdLine) { this.macdLine = macdLine; }
     
+    public double getSignalLine() { return signalLine; }
+    public void setSignalLine(double signalLine) { this.signalLine = signalLine; }
+    
+    public double getHistogram() { return histogram; }
+    public void setHistogram(double histogram) { this.histogram = histogram; }
+    
+    public int getFastPeriod() { return fastPeriod; }
+    public void setFastPeriod(int fastPeriod) { this.fastPeriod = fastPeriod; }
+    
+    public int getSlowPeriod() { return slowPeriod; }
+    public void setSlowPeriod(int slowPeriod) { this.slowPeriod = slowPeriod; }
+    
+    public int getSignalPeriod() { return signalPeriod; }
+    public void setSignalPeriod(int signalPeriod) { this.signalPeriod = signalPeriod; }
+    
+    // Helper methods
     public boolean isBullish() {
         return macdLine > signalLine;
     }
@@ -42,34 +56,21 @@ public class MACDData {
         return histogram < 0;
     }
     
-    // Getters
-    public double getMacdLine() { return macdLine; }
-    public double getSignalLine() { return signalLine; }
-    public double getHistogram() { return histogram; }
-    public double getPreviousMacd() { return previousMacd; }
-    public double getPreviousSignal() { return previousSignal; }
-    public double getPreviousHistogram() { return previousHistogram; }
-    
-    // Additional methods
-    public boolean isCrossingUp() {
-        return macdLine > signalLine && previousMacd <= previousSignal;
+    public double getCrossoverValue() {
+        return macdLine - signalLine;
     }
     
-    public boolean isCrossingDown() {
-        return macdLine < signalLine && previousMacd >= previousSignal;
+    public boolean hasBullishCrossover() {
+        return getCrossoverValue() > 0;
     }
     
-    public boolean isHistogramIncreasing() {
-        return histogram > previousHistogram;
-    }
-    
-    public boolean isHistogramDecreasing() {
-        return histogram < previousHistogram;
+    public boolean hasBearishCrossover() {
+        return getCrossoverValue() < 0;
     }
     
     @Override
     public String toString() {
-        return String.format("MACDData{macd=%.4f, signal=%.4f, hist=%.4f, bullish=%s}",
-                           macdLine, signalLine, histogram, isBullish());
+        return String.format("MACD[Line: %.5f, Signal: %.5f, Histogram: %.5f, Bullish: %b]",
+                macdLine, signalLine, histogram, isBullish());
     }
 }
