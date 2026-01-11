@@ -1,109 +1,96 @@
-package main.java.com.mt5trading.core.config;
+package com.mt5trading.config;
 
 public class RiskConfig {
     private double accountBalance;
-    private double riskPerTrade; // Percentage per trade (e.g., 0.01 = 1%)
-    private double maxPositionSize;
-    private double stopLossPercentage;
-    private double takeProfitPercentage;
-    private double riskRewardRatio;
-    private double stopLossBuffer; // Buffer for stop loss in points
+    private double maxRiskPerTrade;
+    private double maxDailyLoss;
+    private double maxConcurrentTrades;
+    private boolean useFixedPositionSize;
+    private double fixedPositionSize;
+    private double volatilityMultiplier;
     
     public RiskConfig() {
         // Default values
-        this.accountBalance = 10000.0;
-        this.riskPerTrade = 0.02; // 2% per trade
-        this.maxPositionSize = 1.0; // Maximum lots
-        this.stopLossPercentage = 0.02; // 2% stop loss
-        this.takeProfitPercentage = 0.04; // 4% take profit
-        this.riskRewardRatio = 2.0;
-        this.stopLossBuffer = 5.0;
+        this.maxRiskPerTrade = 0.02; // 2%
+        this.maxDailyLoss = 0.05; // 5%
+        this.maxConcurrentTrades = 3;
+        this.useFixedPositionSize = false;
+        this.fixedPositionSize = 0.1; // Standard lot size
+        this.volatilityMultiplier = 1.0;
     }
     
-    public RiskConfig(double accountBalance, double riskPerTrade, double maxPositionSize,
-                     double stopLossPercentage, double takeProfitPercentage, 
-                     double riskRewardRatio, double stopLossBuffer) {
-        this.accountBalance = accountBalance;
-        this.riskPerTrade = riskPerTrade;
-        this.maxPositionSize = maxPositionSize;
-        this.stopLossPercentage = stopLossPercentage;
-        this.takeProfitPercentage = takeProfitPercentage;
-        this.riskRewardRatio = riskRewardRatio;
-        this.stopLossBuffer = stopLossBuffer;
-    }
-    
-    // Getters
+    // Getters and Setters
     public double getAccountBalance() { return accountBalance; }
-    public double getRiskPerTrade() { return riskPerTrade; }
-    public double getMaxPositionSize() { return maxPositionSize; }
-    public double getStopLossPercentage() { return stopLossPercentage; }
-    public double getTakeProfitPercentage() { return takeProfitPercentage; }
-    public double getRiskRewardRatio() { return riskRewardRatio; }
-    public double getStopLossBuffer() { return stopLossBuffer; }
+    public void setAccountBalance(double accountBalance) { this.accountBalance = accountBalance; }
     
-    // Setters
-    public void setAccountBalance(double accountBalance) { 
-        this.accountBalance = accountBalance; 
-    }
-    public void setRiskPerTrade(double riskPerTrade) { 
-        if (riskPerTrade >= 0 && riskPerTrade <= 0.1) { // Max 10% risk
-            this.riskPerTrade = riskPerTrade; 
-        }
-    }
-    public void setMaxPositionSize(double maxPositionSize) { 
-        this.maxPositionSize = maxPositionSize; 
-    }
-    public void setStopLossPercentage(double stopLossPercentage) { 
-        this.stopLossPercentage = stopLossPercentage; 
-    }
-    public void setTakeProfitPercentage(double takeProfitPercentage) { 
-        this.takeProfitPercentage = takeProfitPercentage; 
-    }
-    public void setRiskRewardRatio(double riskRewardRatio) { 
-        this.riskRewardRatio = riskRewardRatio; 
-    }
-    public void setStopLossBuffer(double stopLossBuffer) { 
-        this.stopLossBuffer = stopLossBuffer; 
-    }
+    public double getMaxRiskPerTrade() { return maxRiskPerTrade; }
+    public void setMaxRiskPerTrade(double maxRiskPerTrade) { this.maxRiskPerTrade = maxRiskPerTrade; }
     
-    // Helper methods
-    public double calculateRiskAmount() {
-        return accountBalance * riskPerTrade;
-    }
+    public double getMaxDailyLoss() { return maxDailyLoss; }
+    public void setMaxDailyLoss(double maxDailyLoss) { this.maxDailyLoss = maxDailyLoss; }
     
-    public double calculatePositionSize(double entryPrice, double stopLossPrice) {
-        double riskAmount = calculateRiskAmount();
-        double riskPerUnit = Math.abs(entryPrice - stopLossPrice);
-        
-        if (riskPerUnit == 0) {
-            return 0;
+    public double getMaxConcurrentTrades() { return maxConcurrentTrades; }
+    public void setMaxConcurrentTrades(double maxConcurrentTrades) { this.maxConcurrentTrades = maxConcurrentTrades; }
+    
+    public boolean isUseFixedPositionSize() { return useFixedPositionSize; }
+    public void setUseFixedPositionSize(boolean useFixedPositionSize) { this.useFixedPositionSize = useFixedPositionSize; }
+    
+    public double getFixedPositionSize() { return fixedPositionSize; }
+    public void setFixedPositionSize(double fixedPositionSize) { this.fixedPositionSize = fixedPositionSize; }
+    
+    public double getVolatilityMultiplier() { return volatilityMultiplier; }
+    public void setVolatilityMultiplier(double volatilityMultiplier) { this.volatilityMultiplier = volatilityMultiplier; }
+    
+    // Risk calculation methods
+    public double calculatePositionSize(double entryPrice, double stopLoss, double currentBalance) {
+        if (useFixedPositionSize) {
+            return fixedPositionSize;
         }
         
-        double positionSize = riskAmount / riskPerUnit;
+        // Calculate risk amount based on percentage
+        double riskAmount = currentBalance * maxRiskPerTrade;
         
-        // Apply maximum position size constraint
-        return Math.min(positionSize, maxPositionSize);
+        // Calculate price distance to stop loss
+        double priceDistance = Math.abs(entryPrice - stopLoss);
+        
+        if (priceDistance == 0) {
+            return fixedPositionSize;
+        }
+        
+        // Calculate position size (simplified calculation)
+        double positionSize = (riskAmount / priceDistance) * volatilityMultiplier;
+        
+        // Apply maximum position size limit
+        try {
+            TradingConfig tradingConfig = TradingConfig.load();
+            return Math.min(positionSize, tradingConfig.getMaxPositionSize());
+        } catch (Exception e) {
+            return Math.min(positionSize, 1000); // Fallback max size
+        }
     }
     
-    public double calculateStopLoss(double entryPrice, boolean isBuy) {
-        double stopLossDistance = entryPrice * stopLossPercentage;
-        return isBuy ? entryPrice - stopLossDistance : entryPrice + stopLossDistance;
+    public boolean isDailyLossLimitExceeded(double dailyProfitLoss) {
+        double maxLossAmount = accountBalance * maxDailyLoss;
+        return dailyProfitLoss < -maxLossAmount;
     }
     
-    public double calculateTakeProfit(double entryPrice, double stopLoss, boolean isBuy) {
-        double risk = Math.abs(entryPrice - stopLoss);
-        double reward = risk * riskRewardRatio;
-        return isBuy ? entryPrice + reward : entryPrice - reward;
+    public boolean canOpenNewTrade(int currentOpenTrades) {
+        return currentOpenTrades < maxConcurrentTrades;
+    }
+    
+    public double calculateStopLossDistance(double entryPrice, double volatility) {
+        // Adjust stop loss based on volatility
+        try {
+            TradingConfig config = TradingConfig.load();
+            return config.getStopLossPips() * volatility * volatilityMultiplier;
+        } catch (Exception e) {
+            return 50; // Default 50 pips
+        }
     }
     
     @Override
     public String toString() {
-        return String.format(
-            "RiskConfig{accountBalance=%.2f, riskPerTrade=%.2f%%, maxPositionSize=%.2f, " +
-            "stopLoss=%.2f%%, takeProfit=%.2f%%, riskReward=%.2f, buffer=%.2f}",
-            accountBalance, riskPerTrade * 100, maxPositionSize,
-            stopLossPercentage * 100, takeProfitPercentage * 100,
-            riskRewardRatio, stopLossBuffer
-        );
+        return String.format("RiskConfig[MaxRisk: %.1f%%, MaxDailyLoss: %.1f%%, ConcurrentTrades: %.0f]",
+                maxRiskPerTrade * 100, maxDailyLoss * 100, maxConcurrentTrades);
     }
 }

@@ -1,195 +1,166 @@
-package main.java.com.mt5trading.mt5.connector;
+package com.mt5trading.mt5.connector;
 
-import com.mt5trading.models.CandleData;
+import com.mt5trading.config.TradingConfig;
 import com.mt5trading.mt5.models.MT5Response;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
-import java.io.FileInputStream;
-import java.io.IOException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
 
 public class MT5Connector {
-    private String server;
-    private int port;
-    private String login;
-    private String password;
-    private boolean connected;
-    private MT5WebSocketClient webSocketClient;
+    private static final Logger logger = LoggerFactory.getLogger(MT5Connector.class);
     
-    public MT5Connector() {
-        loadConfig();
-        this.connected = false;
+    private final TradingConfig config;
+    private final HttpClient httpClient;
+    private final ObjectMapper objectMapper;
+    private final String baseUrl;
+    
+    public MT5Connector(TradingConfig config) {
+        this.config = config;
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
+        this.objectMapper = new ObjectMapper();
+        this.baseUrl = config.getMt5ApiUrl();
     }
     
-    public MT5Connector(String server, int port, String login, String password) {
-        this.server = server;
-        this.port = port;
-        this.login = login;
-        this.password = password;
-        this.connected = false;
+    public CompletableFuture<MT5Response> getHistoricalData(String symbol, String timeframe, int bars) {
+        String url = String.format("%s/historical?symbol=%s&timeframe=%s&bars=%d",
+                baseUrl, symbol, timeframe, bars);
+        
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Authorization", "Bearer " + config.getMt5Password())
+                .header("X-MT5-Login", config.getMt5Login())
+                .GET()
+                .build();
+        
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    try {
+                        if (response.statusCode() == 200) {
+                            return objectMapper.readValue(response.body(), MT5Response.class);
+                        } else {
+                            logger.error("Failed to get historical data: HTTP {}", response.statusCode());
+                            return createErrorResponse("HTTP " + response.statusCode());
+                        }
+                    } catch (Exception e) {
+                        logger.error("Error parsing historical data response", e);
+                        return createErrorResponse(e.getMessage());
+                    }
+                });
     }
     
-    private void loadConfig() {
-        Properties prop = new Properties();
-        try {
-            prop.load(new FileInputStream("config.properties"));
-            this.server = prop.getProperty("mt5.server", "demo.mt5.com");
-            this.port = Integer.parseInt(prop.getProperty("mt5.port", "443"));
-            this.login = prop.getProperty("mt5.login", "");
-            this.password = prop.getProperty("mt5.password", "");
-        } catch (IOException e) {
-            System.err.println("Failed to load config.properties, using defaults");
-            this.server = "demo.mt5.com";
-            this.port = 443;
-            this.login = "";
-            this.password = "";
-        }
+    public CompletableFuture<MT5Response> getCurrentPrice(String symbol) {
+        String url = String.format("%s/price?symbol=%s", baseUrl, symbol);
+        
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Authorization", "Bearer " + config.getMt5Password())
+                .header("X-MT5-Login", config.getMt5Login())
+                .GET()
+                .build();
+        
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    try {
+                        if (response.statusCode() == 200) {
+                            return objectMapper.readValue(response.body(), MT5Response.class);
+                        } else {
+                            logger.error("Failed to get current price: HTTP {}", response.statusCode());
+                            return createErrorResponse("HTTP " + response.statusCode());
+                        }
+                    } catch (Exception e) {
+                        logger.error("Error parsing current price response", e);
+                        return createErrorResponse(e.getMessage());
+                    }
+                });
     }
     
-    public boolean connect() {
-        try {
-            System.out.println("Connecting to MT5 server: " + server + ":" + port);
-            
-            // Initialize WebSocket client
-            webSocketClient = new MT5WebSocketClient(server, port, login, password);
-            connected = webSocketClient.connect();
-            
-            if (connected) {
-                System.out.println("Successfully connected to MT5");
-            } else {
-                System.err.println("Failed to connect to MT5");
-            }
-            
-            return connected;
-        } catch (Exception e) {
-            System.err.println("Error connecting to MT5: " + e.getMessage());
-            connected = false;
-            return false;
-        }
+    public CompletableFuture<Boolean> sendOrder(String symbol, String orderType, 
+                                              double volume, double price, 
+                                              double stopLoss, double takeProfit) {
+        String url = String.format("%s/order", baseUrl);
+        
+        String orderJson = String.format(
+                "{\"symbol\": \"%s\", \"type\": \"%s\", \"volume\": %.2f, \"price\": %.5f, " +
+                "\"sl\": %.5f, \"tp\": %.5f, \"magic\": %d, \"comment\": \"MT5-SDS Auto Trade\"}",
+                symbol, orderType, volume, price, stopLoss, takeProfit, config.getMagicNumber());
+        
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + config.getMt5Password())
+                .header("X-MT5-Login", config.getMt5Login())
+                .POST(HttpRequest.BodyPublishers.ofString(orderJson))
+                .build();
+        
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    try {
+                        if (response.statusCode() == 200) {
+                            MT5Response mt5Response = objectMapper.readValue(response.body(), MT5Response.class);
+                            return mt5Response.isSuccess();
+                        } else {
+                            logger.error("Failed to send order: HTTP {}", response.statusCode());
+                            return false;
+                        }
+                    } catch (Exception e) {
+                        logger.error("Error sending order", e);
+                        return false;
+                    }
+                });
+    }
+    
+    public CompletableFuture<Double> getAccountBalance() {
+        String url = String.format("%s/account/balance", baseUrl);
+        
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Authorization", "Bearer " + config.getMt5Password())
+                .header("X-MT5-Login", config.getMt5Login())
+                .GET()
+                .build();
+        
+        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+                .thenApply(response -> {
+                    try {
+                        if (response.statusCode() == 200) {
+                            return objectMapper.readTree(response.body()).get("balance").asDouble();
+                        } else {
+                            logger.error("Failed to get account balance: HTTP {}", response.statusCode());
+                            return 0.0;
+                        }
+                    } catch (Exception e) {
+                        logger.error("Error getting account balance", e);
+                        return 0.0;
+                    }
+                });
+    }
+    
+    private MT5Response createErrorResponse(String error) {
+        MT5Response response = new MT5Response();
+        response.setStatus("ERROR");
+        response.setError(error);
+        return response;
     }
     
     public void disconnect() {
-        if (webSocketClient != null) {
-            webSocketClient.disconnect();
-        }
-        connected = false;
-        System.out.println("Disconnected from MT5");
-    }
-    
-    public List<CandleData> getCandles(String symbol, String timeframe, int count) {
-        if (!connected) {
-            System.err.println("Not connected to MT5. Please connect first.");
-            return new ArrayList<>();
-        }
-        
-        try {
-            // Construct request for candles
-            String request = String.format(
-                "{\"action\":\"getCandles\",\"symbol\":\"%s\",\"timeframe\":\"%s\",\"count\":%d}",
-                symbol, timeframe, count
-            );
-            
-            // Send request via WebSocket
-            MT5Response response = webSocketClient.sendRequest(request);
-            
-            if (response.isSuccess()) {
-                return parseCandles(response.getData());
-            } else {
-                System.err.println("Failed to get candles: " + response.getError());
-                return new ArrayList<>();
-            }
-        } catch (Exception e) {
-            System.err.println("Error getting candles: " + e.getMessage());
-            return new ArrayList<>();
-        }
-    }
-    
-    private List<CandleData> parseCandles(Object data) {
-        List<CandleData> candles = new ArrayList<>();
-        
-        try {
-            if (data instanceof List) {
-                List<?> candleList = (List<?>) data;
-                for (Object obj : candleList) {
-                    if (obj instanceof String) {
-                        // Parse CSV format: time,open,high,low,close,volume
-                        String[] parts = ((String) obj).split(",");
-                        if (parts.length >= 6) {
-                            LocalDateTime time = LocalDateTime.parse(parts[0]);
-                            double open = Double.parseDouble(parts[1]);
-                            double high = Double.parseDouble(parts[2]);
-                            double low = Double.parseDouble(parts[3]);
-                            double close = Double.parseDouble(parts[4]);
-                            long volume = Long.parseLong(parts[5]);
-                            
-                            candles.add(new CandleData(open, high, low, close, volume, time));
-                        }
-                    }
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Error parsing candle data: " + e.getMessage());
-        }
-        
-        return candles;
-    }
-    
-    public boolean sendOrder(String symbol, String orderType, double volume, 
-                           double price, double stopLoss, double takeProfit, 
-                           String comment) {
-        if (!connected) {
-            System.err.println("Not connected to MT5. Please connect first.");
-            return false;
-        }
-        
-        try {
-            String request = String.format(
-                "{\"action\":\"sendOrder\",\"symbol\":\"%s\",\"type\":\"%s\"," +
-                "\"volume\":%.2f,\"price\":%.2f,\"sl\":%.2f,\"tp\":%.2f,\"comment\":\"%s\"}",
-                symbol, orderType, volume, price, stopLoss, takeProfit, comment
-            );
-            
-            MT5Response response = webSocketClient.sendRequest(request);
-            
-            if (response.isSuccess()) {
-                System.out.println("Order sent successfully: " + response.getData());
-                return true;
-            } else {
-                System.err.println("Failed to send order: " + response.getError());
-                return false;
-            }
-        } catch (Exception e) {
-            System.err.println("Error sending order: " + e.getMessage());
-            return false;
-        }
-    }
-    
-    public MT5Response getAccountInfo() {
-        if (!connected) {
-            return new MT5Response(false, "Not connected", null);
-        }
-        
-        try {
-            String request = "{\"action\":\"getAccountInfo\"}";
-            return webSocketClient.sendRequest(request);
-        } catch (Exception e) {
-            return new MT5Response(false, "Error: " + e.getMessage(), null);
-        }
+        logger.info("MT5Connector disconnected");
     }
     
     public boolean isConnected() {
-        return connected;
+        // Implement connection check logic
+        return true;
     }
-    
-    public String getServer() { return server; }
-    public int getPort() { return port; }
-    public String getLogin() { return login; }
-    
-    @Override
-    public String toString() {
-        return String.format("MT5Connector{server='%s', port=%d, connected=%s}", 
-                           server, port, connected);
+
+    public TradingConfig getConfig() {
+        return config;
     }
 }
