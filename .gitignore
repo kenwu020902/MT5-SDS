@@ -34,3 +34,13 @@ logs/
 
 # Virtual machine crash logs
 hs_err_pid*
+
+# VS Code
+.vscode/
+.settings/
+
+# Application properties (optional, remove if you want to commit)
+application.properties
+
+# MT5 credentials (should never be committed)
+*.credentials
