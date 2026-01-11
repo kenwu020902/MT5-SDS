@@ -1,0 +1,12 @@
+{
+    "java.project.sourcePaths": ["src/main/java", "src/test/java"],
+    "java.project.outputPath": "target/classes",
+    "java.project.referencedLibraries": [
+        "target/classes",
+        "lib/**/*.jar",
+        "${env:USERPROFILE}/.m2/repository/**/*.jar"
+    ],
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.compile.nullAnalysis.mode": "automatic"
+    
+}
