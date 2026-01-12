@@ -5,112 +5,123 @@ import java.io.InputStream;
 import java.util.Properties;
 
 public class TradingConfig {
-    private String mt5WebSocketUrl;
-    private String symbol;
-    private String timeframe;
-    private boolean useStrictConfirmation;
-    private boolean useMACDConfirmation;
-    private int macdFastPeriod;
-    private int macdSlowPeriod;
-    private int macdSignalPeriod;
-    private double riskPercentage;
-    private double maxPositionSize;
-    private int stopLossPips;
-    private int takeProfitPips;
-    private int pollingInterval;
-    private boolean enableConsoleLogging;
-    private int dataHistoryBars;
+    private final Properties properties;
     
-    // 新增字段
-    private String mt5ApiUrl;
-    private String mt5Login;
-    private String mt5Password;
-    private String mt5Server;
-    private int magicNumber;
-    private double slippage;
-    
-    private static TradingConfig instance;
-    
-    private TradingConfig() {
-        // Private constructor for singleton
+    private TradingConfig(Properties properties) {
+        this.properties = properties;
     }
     
     public static TradingConfig load() throws IOException {
-        if (instance == null) {
-            instance = new TradingConfig();
-            instance.loadProperties();
-        }
-        return instance;
-    }
-    
-    private void loadProperties() throws IOException {
         Properties props = new Properties();
-        try (InputStream input = getClass().getClassLoader()
+        try (InputStream input = TradingConfig.class.getClassLoader()
                 .getResourceAsStream("application.properties")) {
             if (input == null) {
-                throw new IOException("Unable to find application.properties");
+                throw new IOException("无法找到 application.properties 文件");
             }
             props.load(input);
-            
-            // MT5连接配置
-            mt5ApiUrl = props.getProperty("mt5.api.url", "http://localhost:8080/api");
-            mt5WebSocketUrl = props.getProperty("mt5.websocket.url", "ws://localhost:8080");
-            mt5Login = props.getProperty("mt5.login", "");
-            mt5Password = props.getProperty("mt5.password", "");
-            mt5Server = props.getProperty("mt5.server", "");
-            magicNumber = Integer.parseInt(props.getProperty("mt5.magic.number", "123456"));
-            slippage = Double.parseDouble(props.getProperty("trading.slippage", "2.0"));
-            
-            // Load configuration values
-            symbol = props.getProperty("mt5.symbol", "EURUSD");
-            timeframe = props.getProperty("mt5.timeframe", "PERIOD_H1");
-            useStrictConfirmation = Boolean.parseBoolean(props.getProperty("trading.useStrictConfirmation", "true"));
-            useMACDConfirmation = Boolean.parseBoolean(props.getProperty("trading.useMACDConfirmation", "true"));
-            macdFastPeriod = Integer.parseInt(props.getProperty("trading.macd.fast", "12"));
-            macdSlowPeriod = Integer.parseInt(props.getProperty("trading.macd.slow", "26"));
-            macdSignalPeriod = Integer.parseInt(props.getProperty("trading.macd.signal", "9"));
-            riskPercentage = Double.parseDouble(props.getProperty("trading.risk.percentage", "2.0"));
-            maxPositionSize = Double.parseDouble(props.getProperty("trading.max.position.size", "10.0"));
-            stopLossPips = Integer.parseInt(props.getProperty("trading.stop.loss.pips", "20"));
-            takeProfitPips = Integer.parseInt(props.getProperty("trading.take.profit.pips", "40"));
-            pollingInterval = Integer.parseInt(props.getProperty("app.polling.interval", "5000"));
-            enableConsoleLogging = Boolean.parseBoolean(props.getProperty("app.enable.console.logging", "true"));
-            dataHistoryBars = Integer.parseInt(props.getProperty("app.data.history.bars", "100"));
         }
+        return new TradingConfig(props);
     }
     
-    // Getters
-    public String getMt5WebSocketUrl() { return mt5WebSocketUrl; }
-    public String getMt5ApiUrl() { return mt5ApiUrl; }
-    public String getSymbol() { return symbol; }
-    public String getTimeframe() { return timeframe; }
-    public boolean isUseStrictConfirmation() { return useStrictConfirmation; }
-    public boolean isUseMACDConfirmation() { return useMACDConfirmation; }
-    public int getMacdFastPeriod() { return macdFastPeriod; }
-    public int getMacdSlowPeriod() { return macdSlowPeriod; }
-    public int getMacdSignalPeriod() { return macdSignalPeriod; }
-    public double getRiskPercentage() { return riskPercentage; }
-    public double getMaxPositionSize() { return maxPositionSize; }
-    public int getStopLossPips() { return stopLossPips; }
-    public int getTakeProfitPips() { return takeProfitPips; }
-    public int getPollingInterval() { return pollingInterval; }
-    public boolean isEnableConsoleLogging() { return enableConsoleLogging; }
-    public int getDataHistoryBars() { return dataHistoryBars; }
-    public String getMt5Login() { return mt5Login; }
-    public String getMt5Password() { return mt5Password; }
-    public String getMt5Server() { return mt5Server; }
-    public int getMagicNumber() { return magicNumber; }
-    public double getSlippage() { return slippage; }
+    // WebSocket 配置
+    public String getMt5WebSocketUrl() {
+        return properties.getProperty("mt5.websocket.url", "ws://localhost:8080");
+    }
     
-    @Override
-    public String toString() {
-        return "TradingConfig{" +
-                "symbol='" + symbol + '\'' +
-                ", timeframe='" + timeframe + '\'' +
-                ", apiUrl='" + mt5ApiUrl + '\'' +
-                ", useStrictConfirmation=" + useStrictConfirmation +
-                ", useMACDConfirmation=" + useMACDConfirmation +
-                ", riskPercentage=" + riskPercentage +
-                '}';
+    public int getWebSocketReconnectInterval() {
+        return Integer.parseInt(properties.getProperty("mt5.websocket.reconnect.interval", "5000"));
+    }
+    
+    public int getWebSocketHeartbeatInterval() {
+        return Integer.parseInt(properties.getProperty("mt5.websocket.heartbeat.interval", "30000"));
+    }
+    
+    // MT5 连接配置
+    public String getMt5ApiUrl() {
+        return properties.getProperty("mt5.api.url", "http://localhost:8080/api");
+    }
+    
+    public String getMt5Login() {
+        return properties.getProperty("mt5.login", "1234567");
+    }
+    
+    public String getMt5Password() {
+        return properties.getProperty("mt5.password", "");
+    }
+    
+    public String getMt5Server() {
+        return properties.getProperty("mt5.server", "Demo");
+    }
+    
+    public int getMagicNumber() {
+        return Integer.parseInt(properties.getProperty("mt5.magic.number", "123456"));
+    }
+    
+    // 交易品种配置
+    public String getSymbol() {
+        return properties.getProperty("mt5.symbol", "EURUSD");
+    }
+    
+    public String getTimeframe() {
+        return properties.getProperty("mt5.timeframe", "PERIOD_H1");
+    }
+    
+    // 交易参数
+    public double getRiskPercentage() {
+        return Double.parseDouble(properties.getProperty("trading.risk.percentage", "1.0"));
+    }
+    
+    public boolean isUseStrictConfirmation() {
+        return Boolean.parseBoolean(properties.getProperty("trading.useStrictConfirmation", "true"));
+    }
+    
+    public boolean isUseMACDConfirmation() {
+        return Boolean.parseBoolean(properties.getProperty("trading.useMACDConfirmation", "true"));
+    }
+    
+    public double getSlippage() {
+        return Double.parseDouble(properties.getProperty("trading.slippage", "2.0"));
+    }
+    
+    public double getMaxPositionSize() {
+        return Double.parseDouble(properties.getProperty("trading.max.position.size", "10.0"));
+    }
+    
+    public int getStopLossPips() {
+        return Integer.parseInt(properties.getProperty("trading.stop.loss.pips", "20"));
+    }
+    
+    public int getTakeProfitPips() {
+        return Integer.parseInt(properties.getProperty("trading.take.profit.pips", "40"));
+    }
+    
+    // MACD 参数
+    public int getMacdFast() {
+        return Integer.parseInt(properties.getProperty("trading.macd.fast", "12"));
+    }
+    
+    public int getMacdSlow() {
+        return Integer.parseInt(properties.getProperty("trading.macd.slow", "26"));
+    }
+    
+    public int getMacdSignal() {
+        return Integer.parseInt(properties.getProperty("trading.macd.signal", "9"));
+    }
+    
+    // 应用设置
+    public int getPollingInterval() {
+        return Integer.parseInt(properties.getProperty("app.polling.interval", "5000"));
+    }
+    
+    public boolean isEnableConsoleLogging() {
+        return Boolean.parseBoolean(properties.getProperty("app.enable.console.logging", "true"));
+    }
+    
+    public int getDataHistoryBars() {
+        return Integer.parseInt(properties.getProperty("app.data.history.bars", "100"));
+    }
+    
+    public boolean isTestMode() {
+        return Boolean.parseBoolean(properties.getProperty("app.test.mode", "true"));
     }
 }

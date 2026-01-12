@@ -7,10 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -21,18 +19,63 @@ public class MT5Connector {
     private static final Logger logger = LoggerFactory.getLogger(MT5Connector.class);
     
     private final TradingConfig config;
-    private final HttpClient httpClient;
     private MT5WebSocketClient websocketClient;
     private final ScheduledExecutorService scheduler;
     private boolean webSocketConnected;
     
     public MT5Connector(TradingConfig config) {
         this.config = config;
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
-                .build();
         this.scheduler = Executors.newScheduledThreadPool(1);
         this.webSocketConnected = false;
+    }
+    
+    // 获取历史数据
+    public List<CandleData> getHistoricalData(String symbol, String timeframe, int bars) {
+        logger.info("获取历史数据: {} {} {} bars", symbol, timeframe, bars);
+        
+        // 生成模拟数据
+        List<CandleData> data = new ArrayList<>();
+        double basePrice = 1.10000;
+        
+        for (int i = bars - 1; i >= 0; i--) {
+            double open = basePrice + (Math.random() * 0.002 - 0.001);
+            double high = open + Math.random() * 0.001;
+            double low = open - Math.random() * 0.001;
+            double close = low + Math.random() * (high - low);
+            long volume = (long)(1000000 + Math.random() * 500000);
+            
+            CandleData candle = new CandleData(
+                java.time.LocalDateTime.now().minusMinutes(i * 5),
+                open, high, low, close, volume
+            );
+            data.add(candle);
+        }
+        
+        return data;
+    }
+    
+    // 获取当前价格
+    public double getCurrentPrice(String symbol) {
+        double basePrice;
+        
+        switch (symbol) {
+            case "EURUSD":
+                basePrice = 1.09500;
+                break;
+            case "GBPUSD":
+                basePrice = 1.28000;
+                break;
+            case "USDJPY":
+                basePrice = 150.000;
+                break;
+            case "XAUUSD":
+                basePrice = 1950.00;
+                break;
+            default:
+                basePrice = 1.10000;
+        }
+        
+        return basePrice + (Math.random() * 0.001 - 0.0005);
     }
     
     // 初始化WebSocket连接
@@ -67,7 +110,7 @@ public class MT5Connector {
         }
     }
     
-    // 发送交易指令（通过WebSocket）
+    // 发送交易指令
     public CompletableFuture<Boolean> sendOrder(String symbol, String orderType, 
                                               double volume, double price, 
                                               double stopLoss, double takeProfit) {
@@ -82,9 +125,6 @@ public class MT5Connector {
         try {
             // 通过WebSocket发送订单
             websocketClient.sendTradeOrder(orderType, symbol, volume, price, stopLoss, takeProfit);
-            
-            // 注意：这里需要等待交易响应
-            // 实际实现中应该使用回调或响应队列
             result.complete(true);
             
         } catch (Exception e) {
@@ -95,23 +135,10 @@ public class MT5Connector {
         return result;
     }
     
-    // 获取账户余额（通过WebSocket）
+    // 获取账户余额
     public CompletableFuture<Double> getAccountBalance() {
         CompletableFuture<Double> result = new CompletableFuture<>();
-        
-        if (!webSocketConnected || websocketClient == null) {
-            logger.warn("WebSocket未连接，使用默认余额");
-            result.complete(10000.0);  // 默认值
-            return result;
-        }
-        
-        // 请求账户信息
-        websocketClient.requestAccountInfo();
-        
-        // 注意：这里需要等待响应
-        // 实际实现中应该使用回调或响应队列
-        result.complete(10000.0);  // 临时返回值
-        
+        result.complete(10000.0);  // 模拟余额
         return result;
     }
     
