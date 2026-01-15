@@ -18,11 +18,12 @@ public class SimpleDecisionEngine extends DecisionEngine {
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
     private LocalDateTime lastCandleTime;
     private int candleCheckCounter = 0;
-    private double[] priceHistory = new double[5]; // 存储最近5个价格点用于趋势分析
+    private double[] priceHistory;
     private int priceHistoryIndex = 0;
     
     public SimpleDecisionEngine(TradingConfig config, MT5Connector connector) {
         super(config, connector);
+        priceHistory = new double[config.getPriceHistorySize()];
         initializeScheduler();
     }
     
@@ -33,7 +34,7 @@ public class SimpleDecisionEngine extends DecisionEngine {
             int second = now.getSecond();
             
             // 在第45秒触发分析
-            if (second == 45) {
+            if (second == config.getCandleAnalysisSecond()) {
                 analyzeNextCandleTrend(now);
             }
         }, 0, 1, TimeUnit.SECONDS);
@@ -72,20 +73,20 @@ public class SimpleDecisionEngine extends DecisionEngine {
         // 计算当前K线已过去的时间（秒）
         long secondsSinceCandleStart = java.time.Duration.between(lastCandleTime, currentTime).getSeconds();
         
-        if (secondsSinceCandleStart < 45 || secondsSinceCandleStart >= 60) {
-            return; // 不在第45秒或K线已结束
+        if (secondsSinceCandleStart < config.getCandleAnalysisSecond() || secondsSinceCandleStart >= config.getTimeframe()) {
+            return; // 不在分析时间或K线已结束
         }
         
         candleCheckCounter++;
-        System.out.println("\n[决策引擎] 🔍 第45秒趋势分析 (检查#" + candleCheckCounter + ")");
+        System.out.println("\n[决策引擎] 🔍 第" + config.getCandleAnalysisSecond() + "秒趋势分析 (检查#" + candleCheckCounter + ")");
         System.out.println("[决策引擎] 当前K线开始时间: " + 
                          lastCandleTime.format(DateTimeFormatter.ofPattern("HH:mm:ss")));
         System.out.println("[决策引擎] 分析时间: " + 
                          currentTime.format(DateTimeFormatter.ofPattern("HH:mm:ss")));
         
         try {
-            // 获取当前实时价格（这里需要根据您的MT5Connector实现调整）
-            double currentPrice = getCurrentPrice();
+            // 获取当前实时价格
+            double currentPrice = connector.getCurrentPrice(config.getSymbol());
             System.out.println("[决策引擎] 当前实时价格: " + currentPrice);
             
             // 分析下一根K线可能的趋势
@@ -111,13 +112,14 @@ public class SimpleDecisionEngine extends DecisionEngine {
         System.out.println("[决策引擎] 平均参考价: " + averagePrice);
         System.out.println("[决策引擎] 价格变化: " + priceChange + " (" + String.format("%.2f", percentageChange) + "%)");
         
-        if (percentageChange > 0.08) { // 上涨超过0.08%
+        // 使用配置的阈值
+        if (percentageChange > config.getStrongBullishThreshold()) { // 上涨超过阈值
             return "STRONG_BULLISH";
-        } else if (percentageChange > 0.03) { // 上涨超过0.03%
+        } else if (percentageChange > config.getBullishThreshold()) { // 上涨超过阈值
             return "BULLISH";
-        } else if (percentageChange < -0.08) { // 下跌超过0.08%
+        } else if (percentageChange < config.getStrongBearishThreshold()) { // 下跌超过阈值
             return "STRONG_BEARISH";
-        } else if (percentageChange < -0.03) { // 下跌超过0.03%
+        } else if (percentageChange < config.getBearishThreshold()) { // 下跌超过阈值
             return "BEARISH";
         } else {
             return "NEUTRAL";
@@ -129,7 +131,7 @@ public class SimpleDecisionEngine extends DecisionEngine {
      */
     private void executeDecisionBasedOnTrend(String trendPrediction, double currentPrice) {
         String symbol = config.getSymbol();
-        double volume = 0.1; // 默认交易量
+        double volume = config.getTradeVolume(); // 使用配置的交易量
         
         switch (trendPrediction) {
             case "STRONG_BULLISH":
@@ -174,14 +176,10 @@ public class SimpleDecisionEngine extends DecisionEngine {
     
     /**
      * 获取当前实时价格
-     * 需要根据您的MT5Connector实现进行调整
      */
     private double getCurrentPrice() {
         try {
-            // 这里调用MT5Connector获取实时价格
-            // 示例：return connector.getCurrentPrice(config.getSymbol());
-            // 暂时返回模拟价格
-            return 35000.0 + (Math.random() * 100 - 50); // 模拟US30价格
+            return connector.getCurrentPrice(config.getSymbol());
         } catch (Exception e) {
             System.err.println("[决策引擎] 获取实时价格失败，使用默认值");
             return 35000.0;
@@ -218,13 +216,17 @@ public class SimpleDecisionEngine extends DecisionEngine {
             System.out.println("   方向: " + action);
             System.out.println("   手数: " + volume);
             System.out.println("   入场价: " + currentPrice);
-            System.out.println("[决策引擎] 实际交易已跳过 (app.test.mode=true)");
+            System.out.println("[决策引擎] 实际交易已跳过 (测试模式)");
         } else {
             // 实际执行交易
             try {
-                // 设置止损止盈（示例：80点止损，120点止盈）
-                double stopLoss = action.equals("BUY") ? currentPrice - 80 : currentPrice + 80;
-                double takeProfit = action.equals("BUY") ? currentPrice + 120 : currentPrice - 120;
+                // 设置止损止盈（使用配置的点数）
+                double stopLoss = action.equals("BUY") ? 
+                    currentPrice - config.getStopLossPips() : 
+                    currentPrice + config.getStopLossPips();
+                double takeProfit = action.equals("BUY") ? 
+                    currentPrice + config.getTakeProfitPips() : 
+                    currentPrice - config.getTakeProfitPips();
                 
                 connector.sendOrder(symbol, action, volume, currentPrice, stopLoss, takeProfit);
                 System.out.println("[决策引擎] ✅ 交易指令已发送");
