@@ -66,7 +66,11 @@ public class TradingConfig {
         return properties.getProperty("mt5.timeframe", "PERIOD_H1");
     }
     
-    // 交易参数
+    // 交易参数 - 需要添加的缺失方法
+    public double getTradeVolume() {
+        return Double.parseDouble(properties.getProperty("trading.volume", "0.01"));
+    }
+    
     public double getRiskPercentage() {
         return Double.parseDouble(properties.getProperty("trading.risk.percentage", "1.0"));
     }
