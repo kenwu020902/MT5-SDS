@@ -18,9 +18,9 @@ public class TrendAnalyzer {
     public TrendAnalyzer(TradingConfig config) {
         this.config = config;
         this.macdCalculator = new MACDCalculator(
-                config.getMacdFastPeriod(),
-                config.getMacdSlowPeriod(),
-                config.getMacdSignalPeriod()
+                config.getMacdFast(),
+                config.getMacdSlow(),
+                config.getMacdSignal()
         );
     }
     
@@ -148,8 +148,8 @@ public class TrendAnalyzer {
     public boolean hasVolatilityExpansion(CandleData previousCandle, CandleData currentCandle) {
         if (previousCandle == null || currentCandle == null) return false;
         
-        double previousRange = previousCandle.getTotalRange();
-        double currentRange = currentCandle.getTotalRange();
+        double previousRange = previousCandle.getHigh() - previousCandle.getLow();
+        double currentRange = currentCandle.getHigh() - currentCandle.getLow();
         
         // Current range is at least 1.5 times previous range
         return currentRange > previousRange * 1.5;
